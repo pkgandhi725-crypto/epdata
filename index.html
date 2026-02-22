@@ -19,16 +19,19 @@
         th, td { padding: 10px; border: 1px solid #eee; text-align: left; font-size: 13px; }
         th { background: #eee; }
         .delete-btn { color: red; cursor: pointer; font-weight: bold; border: none; background: none; }
+        #auth-ui { display: none; text-align: center; margin-top: 100px; }
+        #main-ui { display: none; }
     </style>
 </head>
 <body>
 
-<div id="auth-ui" style="text-align: center; margin-top: 100px;">
+<div id="auth-ui">
     <h2>🔐 Private Access</h2>
+    <p>Please login with admin email to continue.</p>
     <button onclick="login()" style="background: #4285F4;">Login with Google</button>
 </div>
 
-<div id="main-ui" style="display: none;">
+<div id="main-ui">
     <div class="container">
         <h2>📋 Personal Directory</h2>
         <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Search anything..." onkeyup="search()">
@@ -42,11 +45,12 @@
             <thead><tr><th>S.No</th><th>Name</th><th>Phone</th><th>Action</th></tr></thead>
             <tbody id="dataTable"></tbody>
         </table>
+        <button onclick="logout()" style="background:#555; margin-top:30px;">Logout</button>
     </div>
 </div>
 
 <script>
-    // ✅ Aapki Nayi Config (From Screenshot)
+    // ✅ Firebase Configuration
     const firebaseConfig = {
         apiKey: "AIzaSyCiiT7KLR-h7U5TClax5dAYVAt2vGcPMMU",
         authDomain: "epdata-a56ca.firebaseapp.com",
@@ -59,22 +63,35 @@
     const db = firebase.firestore();
     const auth = firebase.auth();
 
-    // ✅ OFFLINE PERSISTENCE (Phone memory me save karne ke liye)
+    // Offline Persistence
     db.enablePersistence().catch(err => console.log("Offline disabled", err));
 
-    const ADMIN_EMAIL = "pkgandhi725@gmail.com"; // 👈 Yahan apni Email badlein
+    const ADMIN_EMAIL = "pkgandhi725@gmail.com"; 
 
+    // ✅ Mobile Friendly Login
     function login() {
-        auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        const provider = new firebase.auth.GoogleAuthProvider();
+        auth.signInWithRedirect(provider);
     }
 
-    auth.onAuthStateChanged(user => {
-        if (user && user.email === ADMIN_EMAIL) {
-            document.getElementById('auth-ui').style.display = 'none';
-            document.getElementById('main-ui').style.display = 'block';
-            loadData();
-        } else if (user) {
-            alert("Access Denied!"); auth.signOut();
+    function logout() {
+        auth.signOut().then(() => location.reload());
+    }
+
+    // ✅ Auth State Listener
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            if (user.email === ADMIN_EMAIL) {
+                document.getElementById('auth-ui').style.display = 'none';
+                document.getElementById('main-ui').style.display = 'block';
+                loadData();
+            } else {
+                alert("Access Denied! Account: " + user.email);
+                auth.signOut();
+            }
+        } else {
+            document.getElementById('auth-ui').style.display = 'block';
+            document.getElementById('main-ui').style.display = 'none';
         }
     });
 
@@ -83,22 +100,27 @@
         const phone = document.getElementById('phone').value;
         if(!name || !phone) return alert("Fill Name & Phone!");
 
-        // Duplicate Check
         const snap = await db.collection("data").where("phone", "==", phone).get();
         if(!snap.empty) return alert("Number already exists!");
 
         const counterRef = db.collection('settings').doc('counter');
-        await db.runTransaction(async (t) => {
-            const doc = await t.get(counterRef);
-            const count = (doc.exists ? doc.data().count : 0) + 1;
-            t.set(counterRef, { count: count });
-            await db.collection("data").add({
-                sNo: count, name, phone, 
-                email: document.getElementById('email').value,
-                address: document.getElementById('address').value
+        try {
+            await db.runTransaction(async (t) => {
+                const doc = await t.get(counterRef);
+                const count = (doc.exists ? doc.data().count : 0) + 1;
+                t.set(counterRef, { count: count });
+                await db.collection("data").add({
+                    sNo: count, name, phone, 
+                    email: document.getElementById('email').value,
+                    address: document.getElementById('address').value,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
             });
-        });
-        document.querySelectorAll('input:not(.search-bar)').forEach(i => i.value = '');
+            document.querySelectorAll('input:not(.search-bar)').forEach(i => i.value = '');
+            alert("Entry Saved!");
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
     }
 
     function loadData() {
@@ -119,7 +141,9 @@
         for (let r of rows) r.style.display = r.innerText.toLowerCase().includes(filter) ? "" : "none";
     }
 
-    function deleteItem(id) { if(confirm("Delete?")) db.collection("data").doc(id).delete(); }
+    function deleteItem(id) { 
+        if(confirm("Delete this entry?")) db.collection("data").doc(id).delete(); 
+    }
 </script>
 </body>
 </html>
