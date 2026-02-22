@@ -21,9 +21,12 @@
         .delete-btn { color: red; cursor: pointer; font-weight: bold; border: none; background: none; }
         #auth-ui { display: none; text-align: center; margin-top: 100px; }
         #main-ui { display: none; }
+        #loading { text-align: center; margin-top: 100px; font-size: 18px; color: #555; }
     </style>
 </head>
 <body>
+
+<div id="loading">⏳ Loading...</div>
 
 <div id="auth-ui">
     <h2>🔐 Private Access</h2>
@@ -50,7 +53,6 @@
 </div>
 
 <script>
-    // ✅ Firebase Configuration
     const firebaseConfig = {
         apiKey: "AIzaSyCiiT7KLR-h7U5TClax5dAYVAt2vGcPMMU",
         authDomain: "epdata-a56ca.firebaseapp.com",
@@ -63,14 +65,31 @@
     const db = firebase.firestore();
     const auth = firebase.auth();
 
-    // Offline Persistence
     db.enablePersistence().catch(err => console.log("Offline disabled", err));
 
-    const ADMIN_EMAIL = "pkgandhi725@gmail.com"; 
+    const ADMIN_EMAIL = "pkgandhi725@gmail.com";
 
-    // ✅ Mobile Friendly Login
+    function showLoading() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('auth-ui').style.display = 'none';
+        document.getElementById('main-ui').style.display = 'none';
+    }
+
+    function showAuth() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('auth-ui').style.display = 'block';
+        document.getElementById('main-ui').style.display = 'none';
+    }
+
+    function showMain() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('auth-ui').style.display = 'none';
+        document.getElementById('main-ui').style.display = 'block';
+    }
+
     function login() {
         const provider = new firebase.auth.GoogleAuthProvider();
+        showLoading();
         auth.signInWithRedirect(provider);
     }
 
@@ -78,30 +97,39 @@
         auth.signOut().then(() => location.reload());
     }
 
-    // ✅ Auth State Listener
+    // ✅ IMPORTANT: Redirect result pehle handle karo
+    auth.getRedirectResult().then((result) => {
+        if (result && result.user) {
+            console.log("Login via redirect:", result.user.email);
+        }
+    }).catch((error) => {
+        console.error("Redirect Error:", error);
+        alert("Login Error: " + error.message);
+        showAuth();
+    });
+
+    // ✅ Auth state change pe UI update karo
     auth.onAuthStateChanged((user) => {
         if (user) {
             if (user.email === ADMIN_EMAIL) {
-                document.getElementById('auth-ui').style.display = 'none';
-                document.getElementById('main-ui').style.display = 'block';
+                showMain();
                 loadData();
             } else {
-                alert("Access Denied! Account: " + user.email);
-                auth.signOut();
+                alert("Access Denied! Yeh account allowed nahi hai: " + user.email);
+                auth.signOut().then(() => showAuth());
             }
         } else {
-            document.getElementById('auth-ui').style.display = 'block';
-            document.getElementById('main-ui').style.display = 'none';
+            showAuth();
         }
     });
 
     async function addEntry() {
         const name = document.getElementById('name').value;
         const phone = document.getElementById('phone').value;
-        if(!name || !phone) return alert("Fill Name & Phone!");
+        if (!name || !phone) return alert("Fill Name & Phone!");
 
         const snap = await db.collection("data").where("phone", "==", phone).get();
-        if(!snap.empty) return alert("Number already exists!");
+        if (!snap.empty) return alert("Number already exists!");
 
         const counterRef = db.collection('settings').doc('counter');
         try {
@@ -110,7 +138,7 @@
                 const count = (doc.exists ? doc.data().count : 0) + 1;
                 t.set(counterRef, { count: count });
                 await db.collection("data").add({
-                    sNo: count, name, phone, 
+                    sNo: count, name, phone,
                     email: document.getElementById('email').value,
                     address: document.getElementById('address').value,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -141,9 +169,9 @@
         for (let r of rows) r.style.display = r.innerText.toLowerCase().includes(filter) ? "" : "none";
     }
 
-    function deleteItem(id) { 
-        if(confirm("Delete this entry?")) db.collection("data").doc(id).delete(); 
+    function deleteItem(id) {
+        if (confirm("Delete this entry?")) db.collection("data").doc(id).delete();
     }
 </script>
 </body>
-</html>
+</html>q
