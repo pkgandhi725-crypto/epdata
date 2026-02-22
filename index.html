@@ -10,15 +10,19 @@
     <style>
         :root { --primary: #1b5e20; --bg: #f0f2f5; }
         body { font-family: sans-serif; background: var(--bg); padding: 10px; margin: 0; }
-        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { color: var(--primary); text-align: center; }
+        .container { max-width: 95%; margin: 0 auto; background: #fff; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: var(--primary); text-align: center; margin-bottom: 15px; }
         input { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .search-bar { border: 2px solid var(--primary); background: #e8f5e9; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 10px; border: 1px solid #eee; text-align: left; font-size: 13px; }
-        th { background: #eee; }
-        .delete-btn { color: red; cursor: pointer; font-weight: bold; border: none; background: none; }
+        
+        /* Table responsive box */
+        .table-container { width: 100%; overflow-x: auto; margin-top: 20px; border-radius: 8px; border: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th, td { padding: 10px; border: 1px solid #eee; text-align: left; font-size: 13px; white-space: nowrap; }
+        th { background: #f4f4f4; color: #333; position: sticky; top: 0; }
+        .delete-btn { color: red; cursor: pointer; font-weight: bold; border: none; background: none; font-size: 16px; }
+        
         #auth-ui { display: none; text-align: center; margin-top: 100px; padding: 20px; }
         #main-ui { display: none; }
         #loading { text-align: center; margin-top: 150px; font-size: 20px; }
@@ -41,21 +45,35 @@
 <div id="main-ui">
     <div class="container">
         <h2>📋 Personal Directory</h2>
-        <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Search anything..." onkeyup="search()">
+        <input type="text" id="searchInput" class="search-bar" placeholder="🔍 Search by name, phone, address..." onkeyup="search()">
         <input type="text" id="name" placeholder="Name">
         <input type="text" id="phone" placeholder="Phone">
         <input type="text" id="email" placeholder="Email (Optional)">
         <input type="text" id="address" placeholder="Address">
         <button onclick="addEntry()">Add Entry</button>
-        <table>
-            <thead><tr><th>S.No</th><th>Name</th><th>Phone</th><th>Action</th></tr></thead>
-            <tbody id="dataTable"></tbody>
-        </table>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>S.No</th>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Address</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTable"></tbody>
+            </table>
+        </div>
+        
         <button onclick="logout()" style="background:#555; margin-top:30px;">Logout</button>
     </div>
 </div>
 
 <script>
+    // ✅ Teri Working Config (No Changes here)
     const firebaseConfig = {
         apiKey: "AIzaSyCiiT7KLR-h7U5TClax5dAYVAt2vGcPMUU",
         authDomain: "epdata-a56ca.firebaseapp.com",
@@ -80,60 +98,47 @@
         document.getElementById(screen).style.display = 'block';
     }
 
-    // ✅ Popup method - works best on mobile browsers
     async function login() {
         const btn = document.getElementById('loginBtn');
         const errMsg = document.getElementById('errorMsg');
         btn.disabled = true;
         btn.textContent = '⏳ Logging in...';
-        errMsg.textContent = '';
-
+        
         try {
             const provider = new firebase.auth.GoogleAuthProvider();
             provider.setCustomParameters({ prompt: 'select_account' });
             await auth.signInWithPopup(provider);
-            // onAuthStateChanged handle karega baaki
         } catch (error) {
-            console.error("Login error:", error);
             btn.disabled = false;
             btn.textContent = '🔵 Login with Google';
-
-            if (error.code === 'auth/popup-blocked') {
-                errMsg.textContent = '⚠️ Popup blocked! Browser settings mein popup allow karo.';
-            } else if (error.code === 'auth/popup-closed-by-user') {
-                errMsg.textContent = '⚠️ Login cancel ho gaya. Dobara try karo.';
-            } else {
-                errMsg.textContent = '❌ Error: ' + error.message;
-            }
+            errMsg.textContent = '❌ Error: ' + error.message;
         }
     }
 
-    function logout() {
-        auth.signOut();
-    }
+    function logout() { auth.signOut(); }
 
-    // ✅ Auth State Listener
     auth.onAuthStateChanged((user) => {
         if (user) {
             if (user.email === ADMIN_EMAIL) {
                 showUI('main-ui');
                 loadData();
             } else {
-                alert("❌ Access Denied!\nYeh account allowed nahi hai:\n" + user.email);
+                alert("❌ Access Denied!");
                 auth.signOut();
             }
-        } else {
-            showUI('auth-ui');
-        }
+        } else { showUI('auth-ui'); }
     });
 
     async function addEntry() {
         const name = document.getElementById('name').value.trim();
         const phone = document.getElementById('phone').value.trim();
-        if (!name || !phone) return alert("Name aur Phone fill karo!");
+        const email = document.getElementById('email').value.trim();
+        const address = document.getElementById('address').value.trim();
+
+        if (!name || !phone) return alert("Name aur Phone zaroori hai!");
 
         const snap = await db.collection("data").where("phone", "==", phone).get();
-        if (!snap.empty) return alert("Yeh number already exist karta hai!");
+        if (!snap.empty) return alert("Yeh number already save hai!");
 
         const counterRef = db.collection('settings').doc('counter');
         try {
@@ -142,17 +147,13 @@
                 const count = (doc.exists ? doc.data().count : 0) + 1;
                 t.set(counterRef, { count });
                 await db.collection("data").add({
-                    sNo: count, name, phone,
-                    email: document.getElementById('email').value.trim(),
-                    address: document.getElementById('address').value.trim(),
+                    sNo: count, name, phone, email, address,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
             });
             document.querySelectorAll('input:not(.search-bar)').forEach(i => i.value = '');
-            alert("✅ Entry Saved!");
-        } catch (e) {
-            alert("Error: " + e.message);
-        }
+            alert("✅ Data Saved!");
+        } catch (e) { alert("Error: " + e.message); }
     }
 
     function loadData() {
@@ -162,8 +163,10 @@
                 const d = doc.data();
                 html += `<tr>
                     <td>${d.sNo}</td>
-                    <td>${d.name}</td>
+                    <td><b>${d.name}</b></td>
                     <td>${d.phone}</td>
+                    <td>${d.email || '-'}</td>
+                    <td>${d.address || '-'}</td>
                     <td><button class="delete-btn" onclick="deleteItem('${doc.id}')">✕</button></td>
                 </tr>`;
             });
@@ -180,9 +183,7 @@
     }
 
     function deleteItem(id) {
-        if (confirm("Kya aap is entry ko delete karna chahte hain?")) {
-            db.collection("data").doc(id).delete();
-        }
+        if (confirm("Delete entry?")) db.collection("data").doc(id).delete();
     }
 </script>
 </body>
