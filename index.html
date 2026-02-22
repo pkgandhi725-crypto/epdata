@@ -19,9 +19,10 @@
         th, td { padding: 10px; border: 1px solid #eee; text-align: left; font-size: 13px; }
         th { background: #eee; }
         .delete-btn { color: red; cursor: pointer; font-weight: bold; border: none; background: none; }
-        #auth-ui { display: none; text-align: center; margin-top: 100px; }
+        #auth-ui { display: none; text-align: center; margin-top: 100px; padding: 20px; }
         #main-ui { display: none; }
-        #loading { text-align: center; margin-top: 100px; font-size: 18px; color: #555; }
+        #loading { text-align: center; margin-top: 150px; font-size: 20px; }
+        .error-msg { color: red; font-size: 13px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -31,7 +32,10 @@
 <div id="auth-ui">
     <h2>🔐 Private Access</h2>
     <p>Please login with admin email to continue.</p>
-    <button onclick="login()" style="background: #4285F4;">Login with Google</button>
+    <button id="loginBtn" onclick="login()" style="background: #4285F4; max-width: 300px; margin: 0 auto;">
+        🔵 Login with Google
+    </button>
+    <p id="errorMsg" class="error-msg"></p>
 </div>
 
 <div id="main-ui">
@@ -43,7 +47,6 @@
         <input type="text" id="email" placeholder="Email (Optional)">
         <input type="text" id="address" placeholder="Address">
         <button onclick="addEntry()">Add Entry</button>
-
         <table>
             <thead><tr><th>S.No</th><th>Name</th><th>Phone</th><th>Action</th></tr></thead>
             <tbody id="dataTable"></tbody>
@@ -61,91 +64,92 @@
         messagingSenderId: "796708722810",
         appId: "1:796708722810:web:c8af4d9f367b065a4a43c3"
     };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const auth = firebase.auth();
 
-    db.enablePersistence().catch(err => console.log("Offline disabled", err));
+    db.enablePersistence().catch(err => console.log("Persistence:", err));
 
     const ADMIN_EMAIL = "pkgandhi725@gmail.com";
 
-    function showLoading() {
-        document.getElementById('loading').style.display = 'block';
-        document.getElementById('auth-ui').style.display = 'none';
-        document.getElementById('main-ui').style.display = 'none';
-    }
-
-    function showAuth() {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('auth-ui').style.display = 'block';
-        document.getElementById('main-ui').style.display = 'none';
-    }
-
-    function showMain() {
+    function showUI(screen) {
         document.getElementById('loading').style.display = 'none';
         document.getElementById('auth-ui').style.display = 'none';
-        document.getElementById('main-ui').style.display = 'block';
+        document.getElementById('main-ui').style.display = 'none';
+        document.getElementById(screen).style.display = 'block';
     }
 
-    function login() {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        showLoading();
-        auth.signInWithRedirect(provider);
+    // ✅ Popup method - works best on mobile browsers
+    async function login() {
+        const btn = document.getElementById('loginBtn');
+        const errMsg = document.getElementById('errorMsg');
+        btn.disabled = true;
+        btn.textContent = '⏳ Logging in...';
+        errMsg.textContent = '';
+
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            await auth.signInWithPopup(provider);
+            // onAuthStateChanged handle karega baaki
+        } catch (error) {
+            console.error("Login error:", error);
+            btn.disabled = false;
+            btn.textContent = '🔵 Login with Google';
+
+            if (error.code === 'auth/popup-blocked') {
+                errMsg.textContent = '⚠️ Popup blocked! Browser settings mein popup allow karo.';
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                errMsg.textContent = '⚠️ Login cancel ho gaya. Dobara try karo.';
+            } else {
+                errMsg.textContent = '❌ Error: ' + error.message;
+            }
+        }
     }
 
     function logout() {
-        auth.signOut().then(() => location.reload());
+        auth.signOut();
     }
 
-    // ✅ IMPORTANT: Redirect result pehle handle karo
-    auth.getRedirectResult().then((result) => {
-        if (result && result.user) {
-            console.log("Login via redirect:", result.user.email);
-        }
-    }).catch((error) => {
-        console.error("Redirect Error:", error);
-        alert("Login Error: " + error.message);
-        showAuth();
-    });
-
-    // ✅ Auth state change pe UI update karo
+    // ✅ Auth State Listener
     auth.onAuthStateChanged((user) => {
         if (user) {
             if (user.email === ADMIN_EMAIL) {
-                showMain();
+                showUI('main-ui');
                 loadData();
             } else {
-                alert("Access Denied! Yeh account allowed nahi hai: " + user.email);
-                auth.signOut().then(() => showAuth());
+                alert("❌ Access Denied!\nYeh account allowed nahi hai:\n" + user.email);
+                auth.signOut();
             }
         } else {
-            showAuth();
+            showUI('auth-ui');
         }
     });
 
     async function addEntry() {
-        const name = document.getElementById('name').value;
-        const phone = document.getElementById('phone').value;
-        if (!name || !phone) return alert("Fill Name & Phone!");
+        const name = document.getElementById('name').value.trim();
+        const phone = document.getElementById('phone').value.trim();
+        if (!name || !phone) return alert("Name aur Phone fill karo!");
 
         const snap = await db.collection("data").where("phone", "==", phone).get();
-        if (!snap.empty) return alert("Number already exists!");
+        if (!snap.empty) return alert("Yeh number already exist karta hai!");
 
         const counterRef = db.collection('settings').doc('counter');
         try {
             await db.runTransaction(async (t) => {
                 const doc = await t.get(counterRef);
                 const count = (doc.exists ? doc.data().count : 0) + 1;
-                t.set(counterRef, { count: count });
+                t.set(counterRef, { count });
                 await db.collection("data").add({
                     sNo: count, name, phone,
-                    email: document.getElementById('email').value,
-                    address: document.getElementById('address').value,
+                    email: document.getElementById('email').value.trim(),
+                    address: document.getElementById('address').value.trim(),
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
             });
             document.querySelectorAll('input:not(.search-bar)').forEach(i => i.value = '');
-            alert("Entry Saved!");
+            alert("✅ Entry Saved!");
         } catch (e) {
             alert("Error: " + e.message);
         }
@@ -156,22 +160,30 @@
             let html = "";
             snap.forEach(doc => {
                 const d = doc.data();
-                html += `<tr><td>${d.sNo}</td><td>${d.name}</td><td>${d.phone}</td>
-                <td><button class="delete-btn" onclick="deleteItem('${doc.id}')">X</button></td></tr>`;
+                html += `<tr>
+                    <td>${d.sNo}</td>
+                    <td>${d.name}</td>
+                    <td>${d.phone}</td>
+                    <td><button class="delete-btn" onclick="deleteItem('${doc.id}')">✕</button></td>
+                </tr>`;
             });
             document.getElementById('dataTable').innerHTML = html;
         });
     }
 
     function search() {
-        let filter = document.getElementById('searchInput').value.toLowerCase();
-        let rows = document.getElementById('dataTable').getElementsByTagName('tr');
-        for (let r of rows) r.style.display = r.innerText.toLowerCase().includes(filter) ? "" : "none";
+        const filter = document.getElementById('searchInput').value.toLowerCase();
+        const rows = document.getElementById('dataTable').getElementsByTagName('tr');
+        for (let r of rows) {
+            r.style.display = r.innerText.toLowerCase().includes(filter) ? "" : "none";
+        }
     }
 
     function deleteItem(id) {
-        if (confirm("Delete this entry?")) db.collection("data").doc(id).delete();
+        if (confirm("Kya aap is entry ko delete karna chahte hain?")) {
+            db.collection("data").doc(id).delete();
+        }
     }
 </script>
 </body>
-</html>q
+</html>
