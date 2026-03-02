@@ -73,7 +73,7 @@
 </div>
 
 <script>
-    // ✅ Teri Working Config (No Changes here)
+    // ✅ Your Working Config
     const firebaseConfig = {
         apiKey: "AIzaSyCiiT7KLR-h7U5TClax5dAYVAt2vGcPMUU",
         authDomain: "epdata-a56ca.firebaseapp.com",
@@ -89,7 +89,8 @@
 
     db.enablePersistence().catch(err => console.log("Persistence:", err));
 
-    const ADMIN_EMAIL = "pkgandhi725@gmail.com";
+    // 🔐 List of Authorized Emails
+    const ALLOWED_EMAILS = ["pkgandhi725@gmail.com", "nv4862075@gmail.com"];
 
     function showUI(screen) {
         document.getElementById('loading').style.display = 'none';
@@ -119,11 +120,12 @@
 
     auth.onAuthStateChanged((user) => {
         if (user) {
-            if (user.email === ADMIN_EMAIL) {
+            // Check if logged-in email is in the allowed list
+            if (ALLOWED_EMAILS.includes(user.email.toLowerCase())) {
                 showUI('main-ui');
                 loadData();
             } else {
-                alert("❌ Access Denied!");
+                alert("❌ Access Denied! Unauthorized user.");
                 auth.signOut();
             }
         } else { showUI('auth-ui'); }
